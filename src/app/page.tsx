@@ -1,6 +1,15 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  clearAllConversions,
+  ConversionRecord,
+  deleteConversion,
+  listConversions,
+  saveConversion,
+} from "./lib/indexeddb";
+
+const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB
 
 interface ConvertFile {
   id: string;
@@ -18,6 +27,10 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+function formatDate(ts: number): string {
+  return new Date(ts).toLocaleString();
+}
+
 function StatusBadge({ status }: { status: ConvertFile["status"] }) {
   const map: Record<ConvertFile["status"], { label: string; cls: string }> = {
     pending: { label: "Pending", cls: "badge-pending" },
@@ -33,11 +46,76 @@ function StatusBadge({ status }: { status: ConvertFile["status"] }) {
   );
 }
 
+/** Convert a JPEG File to a PNG Blob entirely in the browser using the Canvas API. */
+function convertJpegToPng(file: File): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    let objectUrl: string | null = null;
+
+    const cleanup = () => {
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+        objectUrl = null;
+      }
+    };
+
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          cleanup();
+          reject(new Error("Canvas not supported in this browser."));
+          return;
+        }
+        ctx.drawImage(img, 0, 0);
+        cleanup();
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error("PNG conversion failed."));
+        }, "image/png");
+      } catch (err) {
+        cleanup();
+        reject(err);
+      }
+    };
+
+    img.onerror = () => {
+      cleanup();
+      reject(new Error("Failed to load image."));
+    };
+
+    objectUrl = URL.createObjectURL(file);
+    img.src = objectUrl;
+  });
+}
+
 export default function HomePage() {
   const [files, setFiles] = useState<ConvertFile[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [converting, setConverting] = useState(false);
+  const [tab, setTab] = useState<"convert" | "history">("convert");
+  const [history, setHistory] = useState<ConversionRecord[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const records = await listConversions();
+      setHistory(records);
+    } catch {
+      // IndexedDB unavailable (e.g., private browsing in some browsers)
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab === "history") loadHistory();
+  }, [tab, loadHistory]);
 
   const addFiles = useCallback((incoming: FileList | File[]) => {
     const arr = Array.from(incoming);
@@ -85,50 +163,47 @@ export default function HomePage() {
     setConverting(true);
 
     for (const item of pending) {
+      if (item.file.size > MAX_FILE_SIZE) {
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.id === item.id
+              ? { ...f, status: "error", error: "File exceeds the 20 MB limit." }
+              : f
+          )
+        );
+        continue;
+      }
+
       setFiles((prev) =>
         prev.map((f) => (f.id === item.id ? { ...f, status: "converting" } : f))
       );
 
       try {
-        const formData = new FormData();
-        formData.append("file", item.file);
-
-        const res = await fetch("/api/convert", {
-          method: "POST",
-          body: formData,
-        });
-
-        if (!res.ok) {
-          let errorMessage = "Conversion failed.";
-          try {
-            const data = await res.json();
-            errorMessage = data.error || errorMessage;
-          } catch {
-            // Response was not JSON (e.g., HTML error page)
-          }
-          throw new Error(errorMessage);
-        }
-
-        const blob = await res.blob();
-        const objectUrl = URL.createObjectURL(blob);
+        const blob = await convertJpegToPng(item.file);
         const outputName = item.file.name.replace(/\.[^.]+$/, "") + ".png";
+        const objectUrl = URL.createObjectURL(blob);
 
-        // Auto-download the converted file to the user's PC
+        // Auto-download the converted file
         const a = document.createElement("a");
         a.href = objectUrl;
         a.download = outputName;
         a.click();
 
+        // Persist to IndexedDB
+        await saveConversion({
+          id: item.id,
+          originalName: item.file.name,
+          outputName,
+          originalSize: item.file.size,
+          outputSize: blob.size,
+          convertedAt: Date.now(),
+          blob,
+        });
+
         setFiles((prev) =>
           prev.map((f) =>
             f.id === item.id
-              ? {
-                  ...f,
-                  status: "done",
-                  objectUrl,
-                  outputName,
-                  outputSize: blob.size,
-                }
+              ? { ...f, status: "done", objectUrl, outputName, outputSize: blob.size }
               : f
           )
         );
@@ -162,6 +237,25 @@ export default function HomePage() {
     setDragOver(true);
   }, []);
 
+  const downloadHistoryItem = (record: ConversionRecord) => {
+    const url = URL.createObjectURL(record.blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = record.outputName;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const removeHistoryItem = async (id: string) => {
+    await deleteConversion(id);
+    setHistory((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  const clearHistory = async () => {
+    await clearAllConversions();
+    setHistory([]);
+  };
+
   const pendingCount = files.filter((f) => f.status === "pending").length;
   const doneCount = files.filter((f) => f.status === "done").length;
 
@@ -176,158 +270,252 @@ export default function HomePage() {
           Insait Jpeg to Png Converter
         </h1>
         <p className="text-gray-400 text-base sm:text-lg max-w-xl mx-auto">
-          Convert your JPEG images to lossless, high-quality PNG files instantly.
-          All processing happens securely on the server.
+          Convert your JPEG images to PNG files entirely in your browser.
+          No server uploads — all processing is local and private.
         </p>
       </header>
 
-      {/* Drop Zone */}
-      <div className="w-full max-w-3xl mb-6">
-        <div
-          className={`drop-zone rounded-2xl p-10 text-center cursor-pointer select-none ${dragOver ? "drag-over" : ""}`}
-          onClick={() => inputRef.current?.click()}
-          onDragOver={handleDragOver}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={handleDrop}
+      {/* Tabs */}
+      <div className="w-full max-w-3xl mb-6 flex gap-2">
+        <button
+          onClick={() => setTab("convert")}
+          className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${
+            tab === "convert"
+              ? "btn-primary text-white"
+              : "border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500"
+          }`}
         >
-          <div className="flex flex-col items-center gap-4">
-            <div
-              className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl"
-              style={{ background: "linear-gradient(135deg, rgba(249,115,22,0.2), rgba(124,58,237,0.2))" }}
-            >
-              📁
-            </div>
-            <div>
-              <p className="text-white font-semibold text-lg mb-1">
-                Drag &amp; drop JPEG files here
-              </p>
-              <p className="text-gray-400 text-sm">
-                or{" "}
-                <span className="text-orange-400 underline underline-offset-2">
-                  click to browse
-                </span>{" "}
-                — up to 20 MB per file
-              </p>
-            </div>
-            <input
-              ref={inputRef}
-              type="file"
-              accept="image/jpeg,image/jpg"
-              multiple
-              className="hidden"
-              onChange={handleFileInput}
-            />
-          </div>
-        </div>
+          Convert
+        </button>
+        <button
+          onClick={() => setTab("history")}
+          className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${
+            tab === "history"
+              ? "btn-primary text-white"
+              : "border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500"
+          }`}
+        >
+          History
+        </button>
       </div>
 
-      {/* File list */}
-      {files.length > 0 && (
+      {tab === "convert" && (
+        <>
+          {/* Drop Zone */}
+          <div className="w-full max-w-3xl mb-6">
+            <div
+              className={`drop-zone rounded-2xl p-10 text-center cursor-pointer select-none ${dragOver ? "drag-over" : ""}`}
+              onClick={() => inputRef.current?.click()}
+              onDragOver={handleDragOver}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+            >
+              <div className="flex flex-col items-center gap-4">
+                <div
+                  className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl"
+                  style={{ background: "linear-gradient(135deg, rgba(249,115,22,0.2), rgba(124,58,237,0.2))" }}
+                >
+                  📁
+                </div>
+                <div>
+                  <p className="text-white font-semibold text-lg mb-1">
+                    Drag &amp; drop JPEG files here
+                  </p>
+                  <p className="text-gray-400 text-sm">
+                    or{" "}
+                    <span className="text-orange-400 underline underline-offset-2">
+                      click to browse
+                    </span>{" "}
+                    — up to 20 MB per file
+                  </p>
+                </div>
+                <input
+                  ref={inputRef}
+                  type="file"
+                  accept="image/jpeg,image/jpg"
+                  multiple
+                  className="hidden"
+                  onChange={handleFileInput}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* File list */}
+          {files.length > 0 && (
+            <div className="w-full max-w-3xl">
+              <div
+                className="card-glow rounded-2xl overflow-hidden"
+                style={{ background: "rgba(13, 0, 20, 0.8)", backdropFilter: "blur(20px)" }}
+              >
+                {/* Toolbar */}
+                <div className="flex items-center justify-between px-5 py-4 border-b border-purple-900/40">
+                  <p className="text-gray-300 text-sm font-medium">
+                    {files.length} file{files.length !== 1 ? "s" : ""}
+                    {doneCount > 0 && (
+                      <span className="text-green-400 ml-2">• {doneCount} converted</span>
+                    )}
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={clearAll}
+                      disabled={converting}
+                      className="text-xs px-3 py-1.5 rounded-lg border border-gray-600 text-gray-400 hover:text-white hover:border-gray-400 transition-all disabled:opacity-40"
+                    >
+                      Clear all
+                    </button>
+                    <button
+                      onClick={convertAll}
+                      disabled={converting || pendingCount === 0}
+                      className="btn-primary text-white text-sm font-semibold px-5 py-1.5 rounded-lg"
+                    >
+                      {converting ? "Converting…" : `Convert ${pendingCount > 0 ? `(${pendingCount})` : ""}`}
+                    </button>
+                  </div>
+                </div>
+
+                {/* File rows */}
+                <ul className="divide-y divide-purple-900/20 max-h-96 overflow-y-auto scrollbar-thin">
+                  {files.map((item) => (
+                    <li key={item.id} className="file-item px-5 py-3.5 flex items-center gap-4">
+                      <div
+                        className="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-lg font-bold"
+                        style={{ background: "linear-gradient(135deg, rgba(249,115,22,0.25), rgba(124,58,237,0.25))" }}
+                      >
+                        🖼
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-sm font-medium truncate">{item.file.name}</p>
+                        <p className="text-gray-500 text-xs">
+                          {formatBytes(item.file.size)}
+                          {item.status === "done" && item.outputSize && (
+                            <span className="text-green-400 ml-2">
+                              → {formatBytes(item.outputSize)}
+                            </span>
+                          )}
+                        </p>
+                        {item.status === "error" && item.error && (
+                          <p className="text-red-400 text-xs mt-0.5">{item.error}</p>
+                        )}
+                      </div>
+
+                      <StatusBadge status={item.status} />
+
+                      {item.status === "done" && item.objectUrl && (
+                        <a
+                          href={item.objectUrl}
+                          download={item.outputName}
+                          className="download-btn text-xs font-semibold px-3 py-1.5 rounded-lg flex-shrink-0"
+                        >
+                          ↓ Download
+                        </a>
+                      )}
+
+                      <button
+                        onClick={() => removeFile(item.id)}
+                        disabled={item.status === "converting"}
+                        className="flex-shrink-0 text-gray-600 hover:text-red-400 transition-colors disabled:opacity-30 text-lg leading-none"
+                        title="Remove"
+                      >
+                        ✕
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+
+                {/* Download all */}
+                {doneCount > 1 && (
+                  <div className="px-5 py-4 border-t border-purple-900/40 flex justify-end">
+                    <button
+                      onClick={() => {
+                        files
+                          .filter((f) => f.status === "done" && f.objectUrl)
+                          .forEach((f) => {
+                            const a = document.createElement("a");
+                            a.href = f.objectUrl!;
+                            a.download = f.outputName!;
+                            a.click();
+                          });
+                      }}
+                      className="download-btn text-sm font-semibold px-5 py-2 rounded-lg"
+                    >
+                      ↓ Download all ({doneCount})
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {tab === "history" && (
         <div className="w-full max-w-3xl">
           <div
             className="card-glow rounded-2xl overflow-hidden"
             style={{ background: "rgba(13, 0, 20, 0.8)", backdropFilter: "blur(20px)" }}
           >
-            {/* Toolbar */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-purple-900/40">
               <p className="text-gray-300 text-sm font-medium">
-                {files.length} file{files.length !== 1 ? "s" : ""}
-                {doneCount > 0 && (
-                  <span className="text-green-400 ml-2">• {doneCount} converted</span>
-                )}
+                {history.length} saved conversion{history.length !== 1 ? "s" : ""} in IndexedDB
               </p>
-              <div className="flex gap-2">
+              {history.length > 0 && (
                 <button
-                  onClick={clearAll}
-                  disabled={converting}
-                  className="text-xs px-3 py-1.5 rounded-lg border border-gray-600 text-gray-400 hover:text-white hover:border-gray-400 transition-all disabled:opacity-40"
+                  onClick={clearHistory}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-gray-600 text-gray-400 hover:text-red-400 hover:border-red-500 transition-all"
                 >
-                  Clear all
+                  Clear history
                 </button>
-                <button
-                  onClick={convertAll}
-                  disabled={converting || pendingCount === 0}
-                  className="btn-primary text-white text-sm font-semibold px-5 py-1.5 rounded-lg"
-                >
-                  {converting ? "Converting…" : `Convert ${pendingCount > 0 ? `(${pendingCount})` : ""}`}
-                </button>
-              </div>
+              )}
             </div>
 
-            {/* File rows */}
-            <ul className="divide-y divide-purple-900/20 max-h-96 overflow-y-auto scrollbar-thin">
-              {files.map((item) => (
-                <li key={item.id} className="file-item px-5 py-3.5 flex items-center gap-4">
-                  {/* Icon */}
-                  <div
-                    className="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-lg font-bold"
-                    style={{ background: "linear-gradient(135deg, rgba(249,115,22,0.25), rgba(124,58,237,0.25))" }}
-                  >
-                    🖼
-                  </div>
+            {historyLoading && (
+              <p className="text-gray-500 text-sm text-center py-10">Loading…</p>
+            )}
 
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm font-medium truncate">{item.file.name}</p>
-                    <p className="text-gray-500 text-xs">
-                      {formatBytes(item.file.size)}
-                      {item.status === "done" && item.outputSize && (
-                        <span className="text-green-400 ml-2">
-                          → {formatBytes(item.outputSize)}
-                        </span>
-                      )}
-                    </p>
-                    {item.status === "error" && item.error && (
-                      <p className="text-red-400 text-xs mt-0.5">{item.error}</p>
-                    )}
-                  </div>
+            {!historyLoading && history.length === 0 && (
+              <p className="text-gray-600 text-sm text-center py-10">
+                No conversions saved yet. Convert a file to see it here.
+              </p>
+            )}
 
-                  {/* Status */}
-                  <StatusBadge status={item.status} />
+            {!historyLoading && history.length > 0 && (
+              <ul className="divide-y divide-purple-900/20 max-h-[32rem] overflow-y-auto scrollbar-thin">
+                {history.map((record) => (
+                  <li key={record.id} className="file-item px-5 py-3.5 flex items-center gap-4">
+                    <div
+                      className="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-lg"
+                      style={{ background: "linear-gradient(135deg, rgba(34,197,94,0.2), rgba(124,58,237,0.2))" }}
+                    >
+                      🖼
+                    </div>
 
-                  {/* Download */}
-                  {item.status === "done" && item.objectUrl && (
-                    <a
-                      href={item.objectUrl}
-                      download={item.outputName}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-sm font-medium truncate">{record.outputName}</p>
+                      <p className="text-gray-500 text-xs">
+                        {formatBytes(record.originalSize)} → {formatBytes(record.outputSize)}
+                        <span className="ml-2 text-gray-600">{formatDate(record.convertedAt)}</span>
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() => downloadHistoryItem(record)}
                       className="download-btn text-xs font-semibold px-3 py-1.5 rounded-lg flex-shrink-0"
                     >
                       ↓ Download
-                    </a>
-                  )}
+                    </button>
 
-                  {/* Remove */}
-                  <button
-                    onClick={() => removeFile(item.id)}
-                    disabled={item.status === "converting"}
-                    className="flex-shrink-0 text-gray-600 hover:text-red-400 transition-colors disabled:opacity-30 text-lg leading-none"
-                    title="Remove"
-                  >
-                    ✕
-                  </button>
-                </li>
-              ))}
-            </ul>
-
-            {/* Download all */}
-            {doneCount > 1 && (
-              <div className="px-5 py-4 border-t border-purple-900/40 flex justify-end">
-                <button
-                  onClick={() => {
-                    files
-                      .filter((f) => f.status === "done" && f.objectUrl)
-                      .forEach((f) => {
-                        const a = document.createElement("a");
-                        a.href = f.objectUrl!;
-                        a.download = f.outputName!;
-                        a.click();
-                      });
-                  }}
-                  className="download-btn text-sm font-semibold px-5 py-2 rounded-lg"
-                >
-                  ↓ Download all ({doneCount})
-                </button>
-              </div>
+                    <button
+                      onClick={() => removeHistoryItem(record.id)}
+                      className="flex-shrink-0 text-gray-600 hover:text-red-400 transition-colors text-lg leading-none"
+                      title="Remove"
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
         </div>
@@ -336,8 +524,8 @@ export default function HomePage() {
       {/* Features */}
       <div className="w-full max-w-3xl mt-12 grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
-          { icon: "⚡", title: "Fast & Lossless", desc: "Server-side conversion with Sharp — maximum quality PNG output." },
-          { icon: "🔒", title: "Secure", desc: "Files are processed in memory and never stored on disk." },
+          { icon: "⚡", title: "100% Local", desc: "Conversion runs in your browser using the Canvas API — no server, no uploads." },
+          { icon: "🗄️", title: "IndexedDB Storage", desc: "Converted files are saved locally in your browser's IndexedDB for later re-download." },
           { icon: "📦", title: "Batch Support", desc: "Upload multiple JPEG files and convert them all at once." },
         ].map((f) => (
           <div
