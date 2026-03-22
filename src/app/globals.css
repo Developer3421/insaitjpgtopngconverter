@@ -1,0 +1,132 @@
+@import "tailwindcss";
+
+:root {
+  --orange: #f97316;
+  --orange-light: #fb923c;
+  --orange-dark: #ea580c;
+  --purple: #7c3aed;
+  --purple-light: #a78bfa;
+  --purple-dark: #5b21b6;
+}
+
+body {
+  background: #0d0014;
+}
+
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50%       { background-position: 100% 50%; }
+}
+
+.gradient-bg {
+  background: linear-gradient(135deg, #1a0030 0%, #0d0014 40%, #1a0a00 80%, #0d0014 100%);
+  background-size: 300% 300%;
+  animation: gradient-shift 10s ease infinite;
+}
+
+.card-glow {
+  box-shadow:
+    0 0 0 1px rgba(249, 115, 22, 0.2),
+    0 0 40px rgba(124, 58, 237, 0.25),
+    0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--orange), var(--purple));
+  transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, var(--orange-dark), var(--purple-dark));
+  box-shadow: 0 0 20px rgba(249, 115, 22, 0.4), 0 0 40px rgba(124, 58, 237, 0.3);
+  transform: translateY(-1px);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.drop-zone {
+  border: 2px dashed rgba(249, 115, 22, 0.4);
+  transition: all 0.3s ease;
+}
+
+.drop-zone:hover,
+.drop-zone.drag-over {
+  border-color: var(--orange);
+  background: rgba(249, 115, 22, 0.05);
+  box-shadow: 0 0 30px rgba(249, 115, 22, 0.15);
+}
+
+.progress-bar {
+  background: linear-gradient(90deg, var(--orange), var(--purple));
+  animation: progress-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes progress-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.7; }
+}
+
+.file-item {
+  border: 1px solid rgba(124, 58, 237, 0.3);
+  background: rgba(124, 58, 237, 0.08);
+  transition: all 0.3s ease;
+}
+
+.file-item:hover {
+  border-color: rgba(249, 115, 22, 0.5);
+  background: rgba(249, 115, 22, 0.05);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, var(--orange-light), var(--purple-light));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.badge-success {
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.4);
+  color: #4ade80;
+}
+
+.badge-error {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #f87171;
+}
+
+.badge-pending {
+  background: rgba(249, 115, 22, 0.12);
+  border: 1px solid rgba(249, 115, 22, 0.35);
+  color: var(--orange-light);
+}
+
+.badge-converting {
+  background: rgba(124, 58, 237, 0.15);
+  border: 1px solid rgba(124, 58, 237, 0.4);
+  color: var(--purple-light);
+}
+
+.download-btn {
+  background: linear-gradient(135deg, rgba(34,197,94,0.15), rgba(34,197,94,0.05));
+  border: 1px solid rgba(34, 197, 94, 0.4);
+  color: #4ade80;
+  transition: all 0.2s ease;
+}
+
+.download-btn:hover {
+  background: linear-gradient(135deg, rgba(34,197,94,0.25), rgba(34,197,94,0.1));
+  box-shadow: 0 0 15px rgba(34, 197, 94, 0.2);
+}
+
+.scrollbar-thin::-webkit-scrollbar { width: 4px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(124, 58, 237, 0.4); border-radius: 2px; }
+
+
