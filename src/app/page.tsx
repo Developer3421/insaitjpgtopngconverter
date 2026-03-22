@@ -99,13 +99,25 @@ export default function HomePage() {
         });
 
         if (!res.ok) {
-          const { error } = await res.json();
-          throw new Error(error || "Conversion failed.");
+          let errorMessage = "Conversion failed.";
+          try {
+            const data = await res.json();
+            errorMessage = data.error || errorMessage;
+          } catch {
+            // Response was not JSON (e.g., HTML error page)
+          }
+          throw new Error(errorMessage);
         }
 
         const blob = await res.blob();
         const objectUrl = URL.createObjectURL(blob);
         const outputName = item.file.name.replace(/\.[^.]+$/, "") + ".png";
+
+        // Auto-download the converted file to the user's PC
+        const a = document.createElement("a");
+        a.href = objectUrl;
+        a.download = outputName;
+        a.click();
 
         setFiles((prev) =>
           prev.map((f) =>
