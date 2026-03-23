@@ -11,6 +11,153 @@ import {
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB
 
+// ---------------------------------------------------------------------------
+// i18n
+// ---------------------------------------------------------------------------
+const translations = {
+  en: {
+    title: "Insait Jpeg to Png Converter",
+    subtitle:
+      "Convert your JPEG images to PNG files entirely in your browser. No server uploads — all processing is local and private.",
+    tabConvert: "Convert",
+    tabHistory: "History",
+    dropTitle: "Drag & drop JPEG files here",
+    dropOr: "or",
+    dropClick: "click to browse",
+    dropLimit: "— up to 20 MB per file",
+    pngSize: "PNG size",
+    clearAll: "Clear all",
+    convertBtn: "Convert",
+    convertingBtn: "Converting…",
+    download: "↓ Download",
+    downloadAll: "↓ Download all",
+    remove: "Remove",
+    statusPending: "Pending",
+    statusConverting: "Converting…",
+    statusDone: "Done ✓",
+    statusError: "Error",
+    converted: "converted",
+    files: "file",
+    filesPlural: "files",
+    historyCount: "saved conversion",
+    historyCountPlural: "saved conversions",
+    historyIndexedDB: "in IndexedDB",
+    clearHistory: "Clear history",
+    loading: "Loading…",
+    noHistory: "No conversions saved yet. Convert a file to see it here.",
+    featLocalTitle: "100% Local",
+    featLocalDesc:
+      "Conversion runs in your browser using the Canvas API — no server, no uploads.",
+    featDBTitle: "IndexedDB Storage",
+    featDBDesc:
+      "Converted files are saved locally in your browser's IndexedDB for later re-download.",
+    featBatchTitle: "Batch Support",
+    featBatchDesc: "Upload multiple JPEG files and convert them all at once.",
+    footer: "Insait · Jpeg to Png Converter",
+    sizeOriginal: "Original (100%)",
+    sizeLarge: "Large (75%)",
+    sizeMedium: "Medium (50%)",
+    sizeSmall: "Small (25%)",
+    sizeCustom: "Custom (px)",
+    hintOriginal: "Keep the original image dimensions.",
+    hintLarge: "Shrink the PNG to 75% while keeping the aspect ratio.",
+    hintMedium: "Shrink the PNG to half of the original dimensions.",
+    hintSmall: "Create a compact PNG at 25% of the original size.",
+    hintCustom: "Specify exact pixel dimensions for the output PNG.",
+    customWidth: "Width (px)",
+    customHeight: "Height (px)",
+    customRequired: "Enter valid width and height in pixels.",
+    fileTooLarge: "File exceeds the 20 MB limit.",
+    canvasError: "Canvas not supported in this browser.",
+    conversionFailed: "PNG conversion failed.",
+    loadImageFailed: "Failed to load image.",
+    pngSizeLabel: "PNG size: {label}.",
+  },
+  de: {
+    title: "Insait JPEG-zu-PNG-Konverter",
+    subtitle:
+      "Konvertieren Sie Ihre JPEG-Bilder vollständig im Browser in PNG-Dateien. Kein Server-Upload — die gesamte Verarbeitung erfolgt lokal und privat.",
+    tabConvert: "Konvertieren",
+    tabHistory: "Verlauf",
+    dropTitle: "JPEG-Dateien hier ablegen",
+    dropOr: "oder",
+    dropClick: "zum Durchsuchen klicken",
+    dropLimit: "— bis zu 20 MB pro Datei",
+    pngSize: "PNG-Größe",
+    clearAll: "Alle löschen",
+    convertBtn: "Konvertieren",
+    convertingBtn: "Konvertiere…",
+    download: "↓ Herunterladen",
+    downloadAll: "↓ Alle herunterladen",
+    remove: "Entfernen",
+    statusPending: "Ausstehend",
+    statusConverting: "Konvertiere…",
+    statusDone: "Fertig ✓",
+    statusError: "Fehler",
+    converted: "konvertiert",
+    files: "Datei",
+    filesPlural: "Dateien",
+    historyCount: "gespeicherte Konvertierung",
+    historyCountPlural: "gespeicherte Konvertierungen",
+    historyIndexedDB: "in IndexedDB",
+    clearHistory: "Verlauf löschen",
+    loading: "Lade…",
+    noHistory:
+      "Noch keine Konvertierungen gespeichert. Konvertieren Sie eine Datei, um sie hier zu sehen.",
+    featLocalTitle: "100% Lokal",
+    featLocalDesc:
+      "Die Konvertierung läuft in Ihrem Browser über die Canvas-API — kein Server, keine Uploads.",
+    featDBTitle: "IndexedDB-Speicher",
+    featDBDesc:
+      "Konvertierte Dateien werden lokal in der IndexedDB Ihres Browsers zum späteren Herunterladen gespeichert.",
+    featBatchTitle: "Stapelverarbeitung",
+    featBatchDesc:
+      "Laden Sie mehrere JPEG-Dateien hoch und konvertieren Sie alle auf einmal.",
+    footer: "Insait · JPEG-zu-PNG-Konverter",
+    sizeOriginal: "Original (100 %)",
+    sizeLarge: "Groß (75 %)",
+    sizeMedium: "Mittel (50 %)",
+    sizeSmall: "Klein (25 %)",
+    sizeCustom: "Benutzerdefiniert (px)",
+    hintOriginal: "Die ursprünglichen Bildabmessungen beibehalten.",
+    hintLarge: "Das PNG auf 75 % verkleinern, Seitenverhältnis bleibt erhalten.",
+    hintMedium: "Das PNG auf die halben Originalabmessungen verkleinern.",
+    hintSmall: "Ein kompaktes PNG mit 25 % der Originalgröße erstellen.",
+    hintCustom: "Genaue Pixelabmessungen für das Ausgabe-PNG festlegen.",
+    customWidth: "Breite (px)",
+    customHeight: "Höhe (px)",
+    customRequired: "Gültige Breite und Höhe in Pixeln eingeben.",
+    fileTooLarge: "Datei überschreitet das 20-MB-Limit.",
+    canvasError: "Canvas wird in diesem Browser nicht unterstützt.",
+    conversionFailed: "PNG-Konvertierung fehlgeschlagen.",
+    loadImageFailed: "Bild konnte nicht geladen werden.",
+    pngSizeLabel: "PNG-Größe: {label}.",
+  },
+} as const;
+
+type Language = keyof typeof translations;
+type T = (typeof translations)[Language];
+
+// ---------------------------------------------------------------------------
+// Size options
+// ---------------------------------------------------------------------------
+const SCALE_OPTIONS = [
+  { value: "100" as const, scale: 1, labelKey: "sizeOriginal" as const },
+  { value: "75" as const, scale: 0.75, labelKey: "sizeLarge" as const },
+  { value: "50" as const, scale: 0.5, labelKey: "sizeMedium" as const },
+  { value: "25" as const, scale: 0.25, labelKey: "sizeSmall" as const },
+];
+
+type ScaleValue = (typeof SCALE_OPTIONS)[number]["value"];
+type OutputSizeValue = ScaleValue | "custom";
+
+function getScaleOption(value: ScaleValue) {
+  return SCALE_OPTIONS.find((o) => o.value === value) ?? SCALE_OPTIONS[0];
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 interface ConvertFile {
   id: string;
   file: File;
@@ -20,35 +167,6 @@ interface ConvertFile {
   outputName?: string;
   outputSize?: number;
 }
-
-const OUTPUT_SIZE_OPTIONS = [
-  {
-    value: "100",
-    label: "Original (100%)",
-    scale: 1,
-    hint: "Keep the original image dimensions.",
-  },
-  {
-    value: "75",
-    label: "Large (75%)",
-    scale: 0.75,
-    hint: "Shrink the PNG to 75% while keeping the aspect ratio.",
-  },
-  {
-    value: "50",
-    label: "Medium (50%)",
-    scale: 0.5,
-    hint: "Shrink the PNG to half of the original dimensions.",
-  },
-  {
-    value: "25",
-    label: "Small (25%)",
-    scale: 0.25,
-    hint: "Create a compact PNG at 25% of the original size.",
-  },
-] as const;
-
-type OutputSizeOptionValue = (typeof OUTPUT_SIZE_OPTIONS)[number]["value"];
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -60,13 +178,6 @@ function formatDate(ts: number): string {
   return new Date(ts).toLocaleString();
 }
 
-function getOutputSizeOption(value: OutputSizeOptionValue) {
-  return (
-    OUTPUT_SIZE_OPTIONS.find((option) => option.value === value) ??
-    OUTPUT_SIZE_OPTIONS[0]
-  );
-}
-
 function getScaledDimensions(width: number, height: number, scale: number) {
   const safeScale = scale > 0 && scale <= 1 ? scale : 1;
 
@@ -76,12 +187,21 @@ function getScaledDimensions(width: number, height: number, scale: number) {
   };
 }
 
-function StatusBadge({ status }: { status: ConvertFile["status"] }) {
+// ---------------------------------------------------------------------------
+// StatusBadge
+// ---------------------------------------------------------------------------
+function StatusBadge({
+  status,
+  t,
+}: {
+  status: ConvertFile["status"];
+  t: T;
+}) {
   const map: Record<ConvertFile["status"], { label: string; cls: string }> = {
-    pending: { label: "Pending", cls: "badge-pending" },
-    converting: { label: "Converting…", cls: "badge-converting" },
-    done: { label: "Done ✓", cls: "badge-success" },
-    error: { label: "Error", cls: "badge-error" },
+    pending: { label: t.statusPending, cls: "badge-pending" },
+    converting: { label: t.statusConverting, cls: "badge-converting" },
+    done: { label: t.statusDone, cls: "badge-success" },
+    error: { label: t.statusError, cls: "badge-error" },
   };
   const { label, cls } = map[status];
   return (
@@ -91,8 +211,19 @@ function StatusBadge({ status }: { status: ConvertFile["status"] }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Conversion dimensions type
+// ---------------------------------------------------------------------------
+type ConversionDimensions =
+  | { type: "scale"; scale: number }
+  | { type: "pixels"; width: number; height: number };
+
 /** Convert a JPEG File to a PNG Blob entirely in the browser using the Canvas API. */
-function convertJpegToPng(file: File, scale: number): Promise<Blob> {
+function convertJpegToPng(
+  file: File,
+  dimensions: ConversionDimensions,
+  t: T
+): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     let objectUrl: string | null = null;
@@ -107,26 +238,37 @@ function convertJpegToPng(file: File, scale: number): Promise<Blob> {
     img.onload = () => {
       try {
         const canvas = document.createElement("canvas");
-        const { width, height } = getScaledDimensions(
-          img.naturalWidth,
-          img.naturalHeight,
-          scale
-        );
-        canvas.width = width;
-        canvas.height = height;
+        let canvasWidth: number;
+        let canvasHeight: number;
+
+        if (dimensions.type === "scale") {
+          const scaled = getScaledDimensions(
+            img.naturalWidth,
+            img.naturalHeight,
+            dimensions.scale
+          );
+          canvasWidth = scaled.width;
+          canvasHeight = scaled.height;
+        } else {
+          canvasWidth = Math.max(1, dimensions.width);
+          canvasHeight = Math.max(1, dimensions.height);
+        }
+
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
         const ctx = canvas.getContext("2d");
         if (!ctx) {
           cleanup();
-          reject(new Error("Canvas not supported in this browser."));
+          reject(new Error(t.canvasError));
           return;
         }
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = "high";
-        ctx.drawImage(img, 0, 0, width, height);
+        ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
         cleanup();
         canvas.toBlob((blob) => {
           if (blob) resolve(blob);
-          else reject(new Error("PNG conversion failed."));
+          else reject(new Error(t.conversionFailed));
         }, "image/png");
       } catch (err) {
         cleanup();
@@ -136,7 +278,7 @@ function convertJpegToPng(file: File, scale: number): Promise<Blob> {
 
     img.onerror = () => {
       cleanup();
-      reject(new Error("Failed to load image."));
+      reject(new Error(t.loadImageFailed));
     };
 
     objectUrl = URL.createObjectURL(file);
@@ -145,13 +287,18 @@ function convertJpegToPng(file: File, scale: number): Promise<Blob> {
 }
 
 export default function HomePage() {
+  const [lang, setLang] = useState<Language>("en");
+  const t = translations[lang];
+
   const [files, setFiles] = useState<ConvertFile[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [converting, setConverting] = useState(false);
   const [tab, setTab] = useState<"convert" | "history">("convert");
   const [history, setHistory] = useState<ConversionRecord[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [outputSize, setOutputSize] = useState<OutputSizeOptionValue>("100");
+  const [outputSize, setOutputSize] = useState<OutputSizeValue>("100");
+  const [customWidth, setCustomWidth] = useState<string>("");
+  const [customHeight, setCustomHeight] = useState<string>("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   const loadHistory = useCallback(async () => {
@@ -213,7 +360,22 @@ export default function HomePage() {
   const convertAll = async () => {
     const pending = files.filter((f) => f.status === "pending");
     if (!pending.length) return;
-    const selectedOutputSize = getOutputSizeOption(outputSize);
+
+    // Resolve dimensions once before processing files
+    let dimensions: ConversionDimensions;
+    if (outputSize === "custom") {
+      const w = parseInt(customWidth, 10);
+      const h = parseInt(customHeight, 10);
+      if (!w || !h || w <= 0 || h <= 0) {
+        alert(t.customRequired);
+        return;
+      }
+      dimensions = { type: "pixels", width: w, height: h };
+    } else {
+      const opt = getScaleOption(outputSize);
+      dimensions = { type: "scale", scale: opt.scale };
+    }
+
     setConverting(true);
 
     for (const item of pending) {
@@ -221,7 +383,7 @@ export default function HomePage() {
         setFiles((prev) =>
           prev.map((f) =>
             f.id === item.id
-              ? { ...f, status: "error", error: "File exceeds the 20 MB limit." }
+              ? { ...f, status: "error", error: t.fileTooLarge }
               : f
           )
         );
@@ -233,7 +395,7 @@ export default function HomePage() {
       );
 
       try {
-        const blob = await convertJpegToPng(item.file, selectedOutputSize.scale);
+        const blob = await convertJpegToPng(item.file, dimensions, t);
         const outputName = item.file.name.replace(/\.[^.]+$/, "") + ".png";
         const objectUrl = URL.createObjectURL(blob);
 
@@ -268,7 +430,7 @@ export default function HomePage() {
               ? {
                   ...f,
                   status: "error",
-                  error: err instanceof Error ? err.message : "Unknown error",
+                  error: err instanceof Error ? err.message : t.statusError,
                 }
               : f
           )
@@ -312,21 +474,54 @@ export default function HomePage() {
 
   const pendingCount = files.filter((f) => f.status === "pending").length;
   const doneCount = files.filter((f) => f.status === "done").length;
-  const selectedOutputSize = getOutputSizeOption(outputSize);
+
+  // Build the current size label + hint for display
+  const sizeLabelMap: Record<OutputSizeValue, string> = {
+    "100": t.sizeOriginal,
+    "75": t.sizeLarge,
+    "50": t.sizeMedium,
+    "25": t.sizeSmall,
+    custom: t.sizeCustom,
+  };
+  const sizeHintMap: Record<OutputSizeValue, string> = {
+    "100": t.hintOriginal,
+    "75": t.hintLarge,
+    "50": t.hintMedium,
+    "25": t.hintSmall,
+    custom: t.hintCustom,
+  };
+  const currentSizeLabel = sizeLabelMap[outputSize];
+  const currentSizeHint = sizeHintMap[outputSize];
 
   return (
     <div className="gradient-bg min-h-screen flex flex-col items-center justify-start px-4 py-12 font-sans">
       {/* Header */}
-      <header className="w-full max-w-3xl mb-10 text-center">
+      <header className="w-full max-w-3xl mb-10 text-center relative">
+        {/* Language toggle */}
+        <div className="absolute right-0 top-0 flex gap-1">
+          {(["en", "de"] as Language[]).map((l) => (
+            <button
+              key={l}
+              onClick={() => setLang(l)}
+              className={`px-2.5 py-1 rounded text-xs font-bold uppercase transition-all ${
+                lang === l
+                  ? "btn-primary text-white"
+                  : "border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500"
+              }`}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+
         <div className="inline-flex items-center gap-2 mb-3">
           <span className="text-4xl">🖼️</span>
         </div>
         <h1 className="text-gradient text-4xl sm:text-5xl font-extrabold tracking-tight leading-tight mb-3">
-          Insait Jpeg to Png Converter
+          {t.title}
         </h1>
         <p className="text-gray-400 text-base sm:text-lg max-w-xl mx-auto">
-          Convert your JPEG images to PNG files entirely in your browser.
-          No server uploads — all processing is local and private.
+          {t.subtitle}
         </p>
       </header>
 
@@ -340,7 +535,7 @@ export default function HomePage() {
               : "border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500"
           }`}
         >
-          Convert
+          {t.tabConvert}
         </button>
         <button
           onClick={() => setTab("history")}
@@ -350,7 +545,7 @@ export default function HomePage() {
               : "border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500"
           }`}
         >
-          History
+          {t.tabHistory}
         </button>
       </div>
 
@@ -374,14 +569,14 @@ export default function HomePage() {
                 </div>
                 <div>
                   <p className="text-white font-semibold text-lg mb-1">
-                    Drag &amp; drop JPEG files here
+                    {t.dropTitle}
                   </p>
                   <p className="text-gray-400 text-sm">
-                    or{" "}
+                    {t.dropOr}{" "}
                     <span className="text-orange-400 underline underline-offset-2">
-                      click to browse
+                      {t.dropClick}
                     </span>{" "}
-                    — up to 20 MB per file
+                    {t.dropLimit}
                   </p>
                 </div>
                 <input
@@ -404,51 +599,88 @@ export default function HomePage() {
                 style={{ background: "rgba(13, 0, 20, 0.8)", backdropFilter: "blur(20px)" }}
               >
                 {/* Toolbar */}
-                <div className="flex flex-col gap-3 px-5 py-4 border-b border-purple-900/40 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-gray-300 text-sm font-medium">
-                      {files.length} file{files.length !== 1 ? "s" : ""}
-                      {doneCount > 0 && (
-                        <span className="text-green-400 ml-2">• {doneCount} converted</span>
-                      )}
-                    </p>
-                    <p className="text-gray-500 text-xs mt-1">
-                      PNG size: {selectedOutputSize.label}. {selectedOutputSize.hint}
-                    </p>
-                  </div>
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                    <label className="text-xs text-gray-400 flex items-center gap-2">
-                      <span>PNG size</span>
-                      <select
-                        value={outputSize}
-                        onChange={(e) =>
-                          setOutputSize(e.target.value as OutputSizeOptionValue)
-                        }
+                <div className="flex flex-col gap-3 px-5 py-4 border-b border-purple-900/40">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-gray-300 text-sm font-medium">
+                        {files.length} {files.length !== 1 ? t.filesPlural : t.files}
+                        {doneCount > 0 && (
+                          <span className="text-green-400 ml-2">• {doneCount} {t.converted}</span>
+                        )}
+                      </p>
+                      <p className="text-gray-500 text-xs mt-1">
+                        {t.pngSizeLabel.replace("{label}", currentSizeLabel)}{" "}
+                        {currentSizeHint}
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <label className="text-xs text-gray-400 flex items-center gap-2">
+                        <span>{t.pngSize}</span>
+                        <select
+                          value={outputSize}
+                          onChange={(e) =>
+                            setOutputSize(e.target.value as OutputSizeValue)
+                          }
+                          disabled={converting}
+                          className="rounded-lg border border-gray-700 bg-black/40 px-3 py-1.5 text-gray-200 outline-none transition-colors focus:border-orange-400 disabled:opacity-50"
+                        >
+                          {SCALE_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {t[opt.labelKey]}
+                            </option>
+                          ))}
+                          <option value="custom">{t.sizeCustom}</option>
+                        </select>
+                      </label>
+                      <button
+                        onClick={clearAll}
                         disabled={converting}
-                        className="rounded-lg border border-gray-700 bg-black/40 px-3 py-1.5 text-gray-200 outline-none transition-colors focus:border-orange-400 disabled:opacity-50"
+                        className="text-xs px-3 py-1.5 rounded-lg border border-gray-600 text-gray-400 hover:text-white hover:border-gray-400 transition-all disabled:opacity-40"
                       >
-                        {OUTPUT_SIZE_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <button
-                      onClick={clearAll}
-                      disabled={converting}
-                      className="text-xs px-3 py-1.5 rounded-lg border border-gray-600 text-gray-400 hover:text-white hover:border-gray-400 transition-all disabled:opacity-40"
-                    >
-                      Clear all
-                    </button>
-                    <button
-                      onClick={convertAll}
-                      disabled={converting || pendingCount === 0}
-                      className="btn-primary text-white text-sm font-semibold px-5 py-1.5 rounded-lg"
-                    >
-                      {converting ? "Converting…" : `Convert ${pendingCount > 0 ? `(${pendingCount})` : ""}`}
-                    </button>
+                        {t.clearAll}
+                      </button>
+                      <button
+                        onClick={convertAll}
+                        disabled={converting || pendingCount === 0}
+                        className="btn-primary text-white text-sm font-semibold px-5 py-1.5 rounded-lg"
+                      >
+                        {converting
+                          ? t.convertingBtn
+                          : `${t.convertBtn}${pendingCount > 0 ? ` (${pendingCount})` : ""}`}
+                      </button>
+                    </div>
                   </div>
+
+                  {/* Custom pixel size inputs */}
+                  {outputSize === "custom" && (
+                    <div className="flex items-center gap-3 pt-1">
+                      <label className="text-xs text-gray-400 flex items-center gap-2">
+                        <span>{t.customWidth}</span>
+                        <input
+                          type="number"
+                          min={1}
+                          value={customWidth}
+                          onChange={(e) => setCustomWidth(e.target.value)}
+                          disabled={converting}
+                          placeholder="e.g. 1920"
+                          className="w-28 rounded-lg border border-gray-700 bg-black/40 px-3 py-1.5 text-gray-200 outline-none transition-colors focus:border-orange-400 disabled:opacity-50"
+                        />
+                      </label>
+                      <span className="text-gray-600 text-sm">×</span>
+                      <label className="text-xs text-gray-400 flex items-center gap-2">
+                        <span>{t.customHeight}</span>
+                        <input
+                          type="number"
+                          min={1}
+                          value={customHeight}
+                          onChange={(e) => setCustomHeight(e.target.value)}
+                          disabled={converting}
+                          placeholder="e.g. 1080"
+                          className="w-28 rounded-lg border border-gray-700 bg-black/40 px-3 py-1.5 text-gray-200 outline-none transition-colors focus:border-orange-400 disabled:opacity-50"
+                        />
+                      </label>
+                    </div>
+                  )}
                 </div>
 
                 {/* File rows */}
@@ -477,7 +709,7 @@ export default function HomePage() {
                         )}
                       </div>
 
-                      <StatusBadge status={item.status} />
+                      <StatusBadge status={item.status} t={t} />
 
                       {item.status === "done" && item.objectUrl && (
                         <a
@@ -485,7 +717,7 @@ export default function HomePage() {
                           download={item.outputName}
                           className="download-btn text-xs font-semibold px-3 py-1.5 rounded-lg flex-shrink-0"
                         >
-                          ↓ Download
+                          {t.download}
                         </a>
                       )}
 
@@ -493,7 +725,7 @@ export default function HomePage() {
                         onClick={() => removeFile(item.id)}
                         disabled={item.status === "converting"}
                         className="flex-shrink-0 text-gray-600 hover:text-red-400 transition-colors disabled:opacity-30 text-lg leading-none"
-                        title="Remove"
+                        title={t.remove}
                       >
                         ✕
                       </button>
@@ -517,7 +749,7 @@ export default function HomePage() {
                       }}
                       className="download-btn text-sm font-semibold px-5 py-2 rounded-lg"
                     >
-                      ↓ Download all ({doneCount})
+                      {t.downloadAll} ({doneCount})
                     </button>
                   </div>
                 )}
@@ -535,25 +767,27 @@ export default function HomePage() {
           >
             <div className="flex items-center justify-between px-5 py-4 border-b border-purple-900/40">
               <p className="text-gray-300 text-sm font-medium">
-                {history.length} saved conversion{history.length !== 1 ? "s" : ""} in IndexedDB
+                {history.length}{" "}
+                {history.length !== 1 ? t.historyCountPlural : t.historyCount}{" "}
+                {t.historyIndexedDB}
               </p>
               {history.length > 0 && (
                 <button
                   onClick={clearHistory}
                   className="text-xs px-3 py-1.5 rounded-lg border border-gray-600 text-gray-400 hover:text-red-400 hover:border-red-500 transition-all"
                 >
-                  Clear history
+                  {t.clearHistory}
                 </button>
               )}
             </div>
 
             {historyLoading && (
-              <p className="text-gray-500 text-sm text-center py-10">Loading…</p>
+              <p className="text-gray-500 text-sm text-center py-10">{t.loading}</p>
             )}
 
             {!historyLoading && history.length === 0 && (
               <p className="text-gray-600 text-sm text-center py-10">
-                No conversions saved yet. Convert a file to see it here.
+                {t.noHistory}
               </p>
             )}
 
@@ -580,13 +814,13 @@ export default function HomePage() {
                       onClick={() => downloadHistoryItem(record)}
                       className="download-btn text-xs font-semibold px-3 py-1.5 rounded-lg flex-shrink-0"
                     >
-                      ↓ Download
+                      {t.download}
                     </button>
 
                     <button
                       onClick={() => removeHistoryItem(record.id)}
                       className="flex-shrink-0 text-gray-600 hover:text-red-400 transition-colors text-lg leading-none"
-                      title="Remove"
+                      title={t.remove}
                     >
                       ✕
                     </button>
@@ -601,9 +835,9 @@ export default function HomePage() {
       {/* Features */}
       <div className="w-full max-w-3xl mt-12 grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
-          { icon: "⚡", title: "100% Local", desc: "Conversion runs in your browser using the Canvas API — no server, no uploads." },
-          { icon: "🗄️", title: "IndexedDB Storage", desc: "Converted files are saved locally in your browser's IndexedDB for later re-download." },
-          { icon: "📦", title: "Batch Support", desc: "Upload multiple JPEG files and convert them all at once." },
+          { icon: "⚡", title: t.featLocalTitle, desc: t.featLocalDesc },
+          { icon: "🗄️", title: t.featDBTitle, desc: t.featDBDesc },
+          { icon: "📦", title: t.featBatchTitle, desc: t.featBatchDesc },
         ].map((f) => (
           <div
             key={f.title}
@@ -622,7 +856,7 @@ export default function HomePage() {
 
       {/* Footer */}
       <footer className="mt-16 text-gray-600 text-xs text-center">
-        © {new Date().getFullYear()} Insait · Jpeg to Png Converter
+        © {new Date().getFullYear()} {t.footer}
       </footer>
     </div>
   );
