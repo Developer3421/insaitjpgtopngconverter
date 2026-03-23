@@ -21,6 +21,35 @@ interface ConvertFile {
   outputSize?: number;
 }
 
+const OUTPUT_SIZE_OPTIONS = [
+  {
+    value: "100",
+    label: "Original (100%)",
+    scale: 1,
+    hint: "Keep the original image dimensions.",
+  },
+  {
+    value: "75",
+    label: "Large (75%)",
+    scale: 0.75,
+    hint: "Shrink the PNG to 75% while keeping the aspect ratio.",
+  },
+  {
+    value: "50",
+    label: "Medium (50%)",
+    scale: 0.5,
+    hint: "Shrink the PNG to half of the original dimensions.",
+  },
+  {
+    value: "25",
+    label: "Small (25%)",
+    scale: 0.25,
+    hint: "Create a compact PNG at 25% of the original size.",
+  },
+] as const;
+
+type OutputSizeOptionValue = (typeof OUTPUT_SIZE_OPTIONS)[number]["value"];
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -29,6 +58,22 @@ function formatBytes(bytes: number): string {
 
 function formatDate(ts: number): string {
   return new Date(ts).toLocaleString();
+}
+
+function getOutputSizeOption(value: OutputSizeOptionValue) {
+  return (
+    OUTPUT_SIZE_OPTIONS.find((option) => option.value === value) ??
+    OUTPUT_SIZE_OPTIONS[0]
+  );
+}
+
+function getScaledDimensions(width: number, height: number, scale: number) {
+  const safeScale = scale > 0 && scale <= 1 ? scale : 1;
+
+  return {
+    width: Math.max(1, Math.round(width * safeScale)),
+    height: Math.max(1, Math.round(height * safeScale)),
+  };
 }
 
 function StatusBadge({ status }: { status: ConvertFile["status"] }) {
@@ -47,7 +92,7 @@ function StatusBadge({ status }: { status: ConvertFile["status"] }) {
 }
 
 /** Convert a JPEG File to a PNG Blob entirely in the browser using the Canvas API. */
-function convertJpegToPng(file: File): Promise<Blob> {
+function convertJpegToPng(file: File, scale: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     let objectUrl: string | null = null;
@@ -62,15 +107,22 @@ function convertJpegToPng(file: File): Promise<Blob> {
     img.onload = () => {
       try {
         const canvas = document.createElement("canvas");
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
+        const { width, height } = getScaledDimensions(
+          img.naturalWidth,
+          img.naturalHeight,
+          scale
+        );
+        canvas.width = width;
+        canvas.height = height;
         const ctx = canvas.getContext("2d");
         if (!ctx) {
           cleanup();
           reject(new Error("Canvas not supported in this browser."));
           return;
         }
-        ctx.drawImage(img, 0, 0);
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, 0, 0, width, height);
         cleanup();
         canvas.toBlob((blob) => {
           if (blob) resolve(blob);
@@ -99,6 +151,7 @@ export default function HomePage() {
   const [tab, setTab] = useState<"convert" | "history">("convert");
   const [history, setHistory] = useState<ConversionRecord[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [outputSize, setOutputSize] = useState<OutputSizeOptionValue>("100");
   const inputRef = useRef<HTMLInputElement>(null);
 
   const loadHistory = useCallback(async () => {
@@ -160,6 +213,7 @@ export default function HomePage() {
   const convertAll = async () => {
     const pending = files.filter((f) => f.status === "pending");
     if (!pending.length) return;
+    const selectedOutputSize = getOutputSizeOption(outputSize);
     setConverting(true);
 
     for (const item of pending) {
@@ -179,7 +233,7 @@ export default function HomePage() {
       );
 
       try {
-        const blob = await convertJpegToPng(item.file);
+        const blob = await convertJpegToPng(item.file, selectedOutputSize.scale);
         const outputName = item.file.name.replace(/\.[^.]+$/, "") + ".png";
         const objectUrl = URL.createObjectURL(blob);
 
@@ -258,6 +312,7 @@ export default function HomePage() {
 
   const pendingCount = files.filter((f) => f.status === "pending").length;
   const doneCount = files.filter((f) => f.status === "done").length;
+  const selectedOutputSize = getOutputSizeOption(outputSize);
 
   return (
     <div className="gradient-bg min-h-screen flex flex-col items-center justify-start px-4 py-12 font-sans">
@@ -349,14 +404,36 @@ export default function HomePage() {
                 style={{ background: "rgba(13, 0, 20, 0.8)", backdropFilter: "blur(20px)" }}
               >
                 {/* Toolbar */}
-                <div className="flex items-center justify-between px-5 py-4 border-b border-purple-900/40">
-                  <p className="text-gray-300 text-sm font-medium">
-                    {files.length} file{files.length !== 1 ? "s" : ""}
-                    {doneCount > 0 && (
-                      <span className="text-green-400 ml-2">• {doneCount} converted</span>
-                    )}
-                  </p>
-                  <div className="flex gap-2">
+                <div className="flex flex-col gap-3 px-5 py-4 border-b border-purple-900/40 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-gray-300 text-sm font-medium">
+                      {files.length} file{files.length !== 1 ? "s" : ""}
+                      {doneCount > 0 && (
+                        <span className="text-green-400 ml-2">• {doneCount} converted</span>
+                      )}
+                    </p>
+                    <p className="text-gray-500 text-xs mt-1">
+                      PNG size: {selectedOutputSize.label}. {selectedOutputSize.hint}
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <label className="text-xs text-gray-400 flex items-center gap-2">
+                      <span>PNG size</span>
+                      <select
+                        value={outputSize}
+                        onChange={(e) =>
+                          setOutputSize(e.target.value as OutputSizeOptionValue)
+                        }
+                        disabled={converting}
+                        className="rounded-lg border border-gray-700 bg-black/40 px-3 py-1.5 text-gray-200 outline-none transition-colors focus:border-orange-400 disabled:opacity-50"
+                      >
+                        {OUTPUT_SIZE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                     <button
                       onClick={clearAll}
                       disabled={converting}
@@ -550,4 +627,3 @@ export default function HomePage() {
     </div>
   );
 }
-
