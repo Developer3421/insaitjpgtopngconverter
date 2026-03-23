@@ -8,6 +8,7 @@ A Next.js web application that converts JPEG/JPG images to high-quality lossless
 
 - **Drag & drop** or click-to-browse file upload
 - **Batch conversion** — upload and convert multiple files at once
+- **Selectable PNG size presets** — keep the original dimensions or resize to 75%, 50%, or 25%
 - **Lossless PNG output** via [Sharp](https://sharp.pixelplumbing.com/) (max compression, adaptive filtering)
 - **In-memory processing** — files are never written to disk
 - **20 MB per file** limit
@@ -15,7 +16,7 @@ A Next.js web application that converts JPEG/JPG images to high-quality lossless
 
 ## Tech Stack
 
-- [Next.js 14](https://nextjs.org/) (App Router)
+- [Next.js 16](https://nextjs.org/) (App Router)
 - [TypeScript](https://www.typescriptlang.org/)
 - [Tailwind CSS](https://tailwindcss.com/)
 - [Sharp](https://sharp.pixelplumbing.com/) for server-side image conversion
@@ -42,4 +43,3 @@ npm start
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
